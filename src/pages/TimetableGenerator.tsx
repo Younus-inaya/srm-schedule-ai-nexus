@@ -1,510 +1,456 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Progress } from '../components/ui/progress';
-import { Alert, AlertDescription } from '../components/ui/alert';
-import { 
-  Calendar, 
-  Zap, 
-  Download, 
-  RefreshCw, 
-  AlertTriangle, 
-  CheckCircle,
-  Clock,
-  Users,
-  BookOpen,
-  GraduationCap,
-  LogOut
-} from 'lucide-react';
+import { Calendar, Zap, Download, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from '../hooks/use-toast';
 
-interface TimetableSlot {
-  day: string;
-  time: string;
-  subject: string;
-  staff: string;
-  classroom: string;
-  duration: number;
+interface Department {
+  id: string;
+  name: string;
+  code: string;
 }
 
-interface ConflictAlert {
-  type: 'overlap' | 'overload' | 'availability' | 'room_conflict';
-  message: string;
-  severity: 'high' | 'medium' | 'low';
-  affected_items: string[];
+interface Subject {
+  id: string;
+  name: string;
+  code: string;
+  credits: number;
+}
+
+interface Staff {
+  id: string;
+  name: string;
+  staff_role: string;
+  subjects_selected?: string;
+}
+
+interface Classroom {
+  id: string;
+  name: string;
+  capacity: number;
+}
+
+interface TimetableEntry {
+  id?: string;
+  day: string;
+  time_slot: string;
+  subject_id: string;
+  staff_id: string;
+  classroom_id: string;
+  department_id: string;
 }
 
 const TimetableGenerator = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('');
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [classrooms, setClassrooms] = useState<Classroom[]>([]);
+  const [generatedTimetable, setGeneratedTimetable] = useState<TimetableEntry[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState(0);
-  const [currentTimetable, setCurrentTimetable] = useState<TimetableSlot[]>([]);
-  const [conflicts, setConflicts] = useState<ConflictAlert[]>([]);
-  const [generationParams, setGenerationParams] = useState({
-    department: '',
-    startDate: '',
-    endDate: '',
-    workingDays: 5,
-    maxClassesPerDay: 6,
-    preferredStartTime: '09:00',
-    preferredEndTime: '17:00',
-    breakDuration: 60,
-    lunchBreakStart: '12:00',
-  });
+  const [loading, setLoading] = useState(true);
 
-  // Mock data for demonstration
-  const sampleTimetable: TimetableSlot[] = [
-    { day: 'Monday', time: '09:00-10:00', subject: 'Data Structures', staff: 'Dr. Smith', classroom: 'CS-101', duration: 60 },
-    { day: 'Monday', time: '10:00-11:00', subject: 'Database Systems', staff: 'Prof. Johnson', classroom: 'CS-102', duration: 60 },
-    { day: 'Monday', time: '11:15-12:15', subject: 'Machine Learning', staff: 'Dr. Brown', classroom: 'CS-103', duration: 60 },
-    { day: 'Monday', time: '13:15-14:15', subject: 'Web Development', staff: 'Ms. Davis', classroom: 'CS-104', duration: 60 },
-    { day: 'Tuesday', time: '09:00-10:00', subject: 'Algorithms', staff: 'Dr. Wilson', classroom: 'CS-101', duration: 60 },
-    { day: 'Tuesday', time: '10:00-11:00', subject: 'Computer Networks', staff: 'Prof. Taylor', classroom: 'CS-105', duration: 60 },
-  ];
+  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const timeSlots = ['09:00-10:00', '10:00-11:00', '11:00-12:00', '12:00-13:00', '14:00-15:00', '15:00-16:00', '16:00-17:00'];
 
-  const sampleConflicts: ConflictAlert[] = [
-    {
-      type: 'overlap',
-      message: 'Dr. Smith has overlapping classes on Monday 10:00-11:00',
-      severity: 'high',
-      affected_items: ['Data Structures', 'Programming Lab']
-    },
-    {
-      type: 'room_conflict',
-      message: 'Classroom CS-101 is double booked on Tuesday 14:00-15:00',
-      severity: 'medium',
-      affected_items: ['CS-101']
-    },
-    {
-      type: 'overload',
-      message: 'Prof. Johnson has 7 classes scheduled (exceeds limit of 6)',
-      severity: 'medium',
-      affected_items: ['Prof. Johnson']
+  useEffect(() => {
+    fetchDepartments();
+  }, []);
+
+  useEffect(() => {
+    if (selectedDepartment) {
+      fetchDepartmentData();
     }
-  ];
+  }, [selectedDepartment]);
 
-  const handleGenerateTimetable = async () => {
-    if (!generationParams.department || !generationParams.startDate || !generationParams.endDate) {
+  const fetchDepartments = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('departments')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      setDepartments(data || []);
+      
+      // Auto-select user's department if they are dept_admin
+      if (user?.role === 'dept_admin' && user.department_id) {
+        setSelectedDepartment(user.department_id);
+      }
+    } catch (error) {
+      console.error('Error fetching departments:', error);
       toast({
         title: "Error",
-        description: "Please fill in all required fields",
+        description: "Failed to fetch departments",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setLoading(false);
     }
+  };
 
+  const fetchDepartmentData = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch subjects
+      const { data: subjectData, error: subjectError } = await supabase
+        .from('subjects')
+        .select('*')
+        .eq('department_id', selectedDepartment)
+        .order('name');
+
+      if (subjectError) throw subjectError;
+
+      // Fetch staff
+      const { data: staffData, error: staffError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('department_id', selectedDepartment)
+        .eq('role', 'staff')
+        .order('name');
+
+      if (staffError) throw staffError;
+
+      // Fetch classrooms
+      const { data: classroomData, error: classroomError } = await supabase
+        .from('classrooms')
+        .select('*')
+        .eq('department_id', selectedDepartment)
+        .order('name');
+
+      if (classroomError) throw classroomError;
+
+      setSubjects(subjectData || []);
+      setStaff(staffData || []);
+      setClassrooms(classroomData || []);
+    } catch (error) {
+      console.error('Error fetching department data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch department data",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateTimetable = async () => {
     setIsGenerating(true);
-    setGenerationProgress(0);
-    setConflicts([]);
-
-    // Simulate AI generation process
-    const steps = [
-      { message: "Initializing AI engine...", progress: 10 },
-      { message: "Loading staff availability...", progress: 25 },
-      { message: "Processing subject requirements...", progress: 40 },
-      { message: "Checking classroom availability...", progress: 55 },
-      { message: "Optimizing schedule conflicts...", progress: 70 },
-      { message: "Applying constraints and rules...", progress: 85 },
-      { message: "Finalizing timetable...", progress: 100 },
-    ];
-
-    for (const step of steps) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setGenerationProgress(step.progress);
-      toast({
-        title: "AI Generation",
-        description: step.message,
-      });
-    }
-
-    // Set results
-    setCurrentTimetable(sampleTimetable);
-    setConflicts(sampleConflicts);
-    setIsGenerating(false);
-
-    toast({
-      title: "Success",
-      description: "Timetable generated successfully with AI optimization!",
-    });
-  };
-
-  const handleExportTimetable = () => {
-    // TODO: Implement actual Excel export
-    toast({
-      title: "Export Started",
-      description: "Timetable is being exported to Excel format...",
-    });
     
-    // Simulate download
-    setTimeout(() => {
+    try {
+      // Simple AI-like timetable generation logic
+      const newTimetable: TimetableEntry[] = [];
+      const usedSlots = new Set<string>();
+      const staffWorkload = new Map<string, number>();
+      
+      // Initialize staff workload tracking
+      staff.forEach(s => staffWorkload.set(s.id, 0));
+
+      for (const subject of subjects) {
+        // Find available staff for this subject
+        const availableStaff = staff.filter(s => {
+          const selectedSubjects = s.subjects_selected ? JSON.parse(s.subjects_selected) : [];
+          return selectedSubjects.includes(subject.id) || selectedSubjects.length === 0;
+        });
+
+        if (availableStaff.length === 0) continue;
+
+        // Calculate classes needed based on credits
+        const classesNeeded = Math.max(subject.credits, 1);
+
+        for (let i = 0; i < classesNeeded; i++) {
+          // Find available time slot
+          let slotFound = false;
+          
+          for (const day of daysOfWeek) {
+            if (slotFound) break;
+            
+            for (const timeSlot of timeSlots) {
+              const slotKey = `${day}-${timeSlot}`;
+              
+              if (usedSlots.has(slotKey)) continue;
+
+              // Find staff with least workload
+              const selectedStaff = availableStaff.reduce((prev, current) => {
+                const prevWorkload = staffWorkload.get(prev.id) || 0;
+                const currentWorkload = staffWorkload.get(current.id) || 0;
+                return currentWorkload < prevWorkload ? current : prev;
+              });
+
+              // Check if staff is already assigned at this time
+              const staffConflict = newTimetable.some(entry => 
+                entry.staff_id === selectedStaff.id && 
+                entry.day === day && 
+                entry.time_slot === timeSlot
+              );
+
+              if (staffConflict) continue;
+
+              // Find available classroom
+              const availableClassroom = classrooms.find(classroom => {
+                return !newTimetable.some(entry => 
+                  entry.classroom_id === classroom.id && 
+                  entry.day === day && 
+                  entry.time_slot === timeSlot
+                );
+              });
+
+              if (!availableClassroom) continue;
+
+              // Add to timetable
+              newTimetable.push({
+                day,
+                time_slot: timeSlot,
+                subject_id: subject.id,
+                staff_id: selectedStaff.id,
+                classroom_id: availableClassroom.id,
+                department_id: selectedDepartment,
+              });
+
+              // Update workload
+              staffWorkload.set(selectedStaff.id, (staffWorkload.get(selectedStaff.id) || 0) + 1);
+              usedSlots.add(slotKey);
+              slotFound = true;
+              break;
+            }
+          }
+        }
+      }
+
+      setGeneratedTimetable(newTimetable);
       toast({
-        title: "Export Complete",
-        description: "Timetable downloaded successfully!",
+        title: "Success",
+        description: `Generated timetable with ${newTimetable.length} classes`,
       });
-    }, 2000);
-  };
-
-  const handleResolveConflict = (conflictIndex: number) => {
-    const newConflicts = conflicts.filter((_, index) => index !== conflictIndex);
-    setConflicts(newConflicts);
-    toast({
-      title: "Conflict Resolved",
-      description: "The conflict has been automatically resolved by AI.",
-    });
-  };
-
-  const getConflictColor = (severity: string) => {
-    switch (severity) {
-      case 'high': return 'bg-red-100 border-red-300 text-red-800';
-      case 'medium': return 'bg-yellow-100 border-yellow-300 text-yellow-800';
-      case 'low': return 'bg-blue-100 border-blue-300 text-blue-800';
-      default: return 'bg-gray-100 border-gray-300 text-gray-800';
+    } catch (error) {
+      console.error('Error generating timetable:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate timetable",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
     }
   };
+
+  const saveTimetable = async () => {
+    try {
+      // Delete existing timetable for this department
+      await supabase
+        .from('timetables')
+        .delete()
+        .eq('department_id', selectedDepartment);
+
+      // Insert new timetable
+      const { error } = await supabase
+        .from('timetables')
+        .insert(generatedTimetable);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Timetable saved successfully!",
+      });
+    } catch (error) {
+      console.error('Error saving timetable:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save timetable",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getSubjectName = (subjectId: string) => {
+    return subjects.find(s => s.id === subjectId)?.code || 'Unknown';
+  };
+
+  const getStaffName = (staffId: string) => {
+    return staff.find(s => s.id === staffId)?.name || 'Unknown';
+  };
+
+  const getClassroomName = (classroomId: string) => {
+    return classrooms.find(c => c.id === classroomId)?.name || 'Unknown';
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
-        <div className="px-6 py-4 flex items-center justify-between">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => navigate(-1)}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
             <Calendar className="h-8 w-8 text-blue-600" />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">AI Timetable Generator</h1>
-              <p className="text-sm text-gray-600">Intelligent Schedule Optimization</p>
+              <p className="text-sm text-gray-600">Generate optimized class schedules</p>
             </div>
-          </div>
-          <div className="flex items-center space-x-4">
-            <Badge variant="secondary">{user?.role?.replace('_', ' ')}</Badge>
-            <span className="text-sm text-gray-600">{user?.name}</span>
-            <Button variant="outline" size="sm" onClick={logout}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
           </div>
         </div>
       </header>
 
-      <div className="p-6">
-        {/* Generation Parameters */}
-        <Card className="mb-6">
+      <div className="container mx-auto px-4 py-8">
+        {/* Controls */}
+        <Card className="mb-8">
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <Zap className="h-5 w-5 mr-2 text-yellow-600" />
-              AI Generation Parameters
-            </CardTitle>
-            <CardDescription>
-              Configure parameters for intelligent timetable generation
-            </CardDescription>
+            <CardTitle>Generate Timetable</CardTitle>
+            <CardDescription>Select department and generate AI-optimized timetable</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="department">Department</Label>
-                <Select onValueChange={(value) => setGenerationParams({...generationParams, department: value})}>
+            <div className="flex flex-col md:flex-row gap-4 items-end">
+              <div className="flex-1">
+                <label className="block text-sm font-medium mb-2">Department</label>
+                <Select 
+                  value={selectedDepartment} 
+                  onValueChange={setSelectedDepartment}
+                  disabled={user?.role === 'dept_admin'}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select department" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cse">Computer Science Engineering</SelectItem>
-                    <SelectItem value="ece">Electronics & Communication</SelectItem>
-                    <SelectItem value="mech">Mechanical Engineering</SelectItem>
-                    <SelectItem value="civil">Civil Engineering</SelectItem>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        {dept.name} ({dept.code})
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="startDate">Start Date</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={generationParams.startDate}
-                  onChange={(e) => setGenerationParams({...generationParams, startDate: e.target.value})}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="endDate">End Date</Label>
-                <Input
-                  id="endDate"
-                  type="date"
-                  value={generationParams.endDate}
-                  onChange={(e) => setGenerationParams({...generationParams, endDate: e.target.value})}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="workingDays">Working Days per Week</Label>
-                <Select onValueChange={(value) => setGenerationParams({...generationParams, workingDays: parseInt(value)})}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={generationParams.workingDays.toString()} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="5">5 Days</SelectItem>
-                    <SelectItem value="6">6 Days</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="maxClasses">Max Classes per Day</Label>
-                <Input
-                  id="maxClasses"
-                  type="number"
-                  value={generationParams.maxClassesPerDay}
-                  onChange={(e) => setGenerationParams({...generationParams, maxClassesPerDay: parseInt(e.target.value)})}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="startTime">Preferred Start Time</Label>
-                <Input
-                  id="startTime"
-                  type="time"
-                  value={generationParams.preferredStartTime}
-                  onChange={(e) => setGenerationParams({...generationParams, preferredStartTime: e.target.value})}
-                />
-              </div>
-            </div>
-
-            <div className="mt-6 flex space-x-4">
-              <Button 
-                onClick={handleGenerateTimetable}
-                disabled={isGenerating}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                {isGenerating ? (
+              <div className="flex gap-2">
+                <Button 
+                  onClick={generateTimetable}
+                  disabled={!selectedDepartment || isGenerating}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <Zap className="h-4 w-4 mr-2" />
+                  {isGenerating ? 'Generating...' : 'Generate'}
+                </Button>
+                {generatedTimetable.length > 0 && (
                   <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="h-4 w-4 mr-2" />
-                    Generate AI Timetable
+                    <Button onClick={saveTimetable} variant="outline">
+                      Save Timetable
+                    </Button>
+                    <Button variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                    </Button>
                   </>
                 )}
-              </Button>
-
-              {currentTimetable.length > 0 && (
-                <Button variant="outline" onClick={handleExportTimetable}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export to Excel
-                </Button>
-              )}
-            </div>
-
-            {/* Generation Progress */}
-            {isGenerating && (
-              <div className="mt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">AI Processing</span>
-                  <span className="text-sm text-gray-600">{generationProgress}%</span>
-                </div>
-                <Progress value={generationProgress} className="w-full" />
               </div>
-            )}
+            </div>
           </CardContent>
         </Card>
 
-        {/* Conflict Alerts */}
-        {conflicts.length > 0 && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center text-orange-600">
-                <AlertTriangle className="h-5 w-5 mr-2" />
-                Conflict Alerts
-              </CardTitle>
-              <CardDescription>
-                AI has detected potential scheduling conflicts
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {conflicts.map((conflict, index) => (
-                  <Alert key={index} className={getConflictColor(conflict.severity)}>
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">{conflict.message}</p>
-                        <p className="text-sm opacity-75">
-                          Affected: {conflict.affected_items.join(', ')}
-                        </p>
-                      </div>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => handleResolveConflict(index)}
-                      >
-                        Auto-Resolve
-                      </Button>
-                    </AlertDescription>
-                  </Alert>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+        {/* Stats */}
+        {selectedDepartment && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold">{subjects.length}</div>
+                <div className="text-sm text-gray-600">Subjects</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold">{staff.length}</div>
+                <div className="text-sm text-gray-600">Staff Members</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold">{classrooms.length}</div>
+                <div className="text-sm text-gray-600">Classrooms</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-2xl font-bold">{generatedTimetable.length}</div>
+                <div className="text-sm text-gray-600">Generated Classes</div>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {/* Generated Timetable */}
-        {currentTimetable.length > 0 && (
+        {generatedTimetable.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center text-green-600">
-                <CheckCircle className="h-5 w-5 mr-2" />
-                Generated Timetable
-              </CardTitle>
-              <CardDescription>
-                AI-optimized schedule with conflict resolution
-              </CardDescription>
+              <CardTitle>Generated Timetable</CardTitle>
+              <CardDescription>AI-optimized class schedule</CardDescription>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="weekly" className="space-y-4">
-                <TabsList>
-                  <TabsTrigger value="weekly">Weekly View</TabsTrigger>
-                  <TabsTrigger value="daily">Daily View</TabsTrigger>
-                  <TabsTrigger value="analytics">Analytics</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="weekly">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Day</TableHead>
-                        <TableHead>Time</TableHead>
-                        <TableHead>Subject</TableHead>
-                        <TableHead>Staff</TableHead>
-                        <TableHead>Classroom</TableHead>
-                        <TableHead>Duration</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {currentTimetable.map((slot, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium">{slot.day}</TableCell>
-                          <TableCell>{slot.time}</TableCell>
-                          <TableCell>{slot.subject}</TableCell>
-                          <TableCell>{slot.staff}</TableCell>
-                          <TableCell>{slot.classroom}</TableCell>
-                          <TableCell>{slot.duration} min</TableCell>
-                        </TableRow>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse border border-gray-300">
+                  <thead>
+                    <tr>
+                      <th className="border border-gray-300 p-3 bg-gray-50 text-left">Time</th>
+                      {daysOfWeek.map(day => (
+                        <th key={day} className="border border-gray-300 p-3 bg-gray-50 text-center">
+                          {day}
+                        </th>
                       ))}
-                    </TableBody>
-                  </Table>
-                </TabsContent>
-
-                <TabsContent value="daily">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => (
-                      <Card key={day}>
-                        <CardHeader>
-                          <CardTitle className="text-lg">{day}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-2">
-                            {currentTimetable
-                              .filter(slot => slot.day === day)
-                              .map((slot, index) => (
-                                <div key={index} className="p-2 bg-gray-50 rounded">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium">{slot.time}</span>
-                                    <Badge variant="outline">{slot.classroom}</Badge>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {timeSlots.map(timeSlot => (
+                      <tr key={timeSlot}>
+                        <td className="border border-gray-300 p-3 font-medium bg-gray-50">
+                          {timeSlot}
+                        </td>
+                        {daysOfWeek.map(day => {
+                          const entry = generatedTimetable.find(
+                            t => t.day === day && t.time_slot === timeSlot
+                          );
+                          return (
+                            <td key={`${day}-${timeSlot}`} className="border border-gray-300 p-3">
+                              {entry ? (
+                                <div className="space-y-1">
+                                  <Badge variant="default" className="text-xs">
+                                    {getSubjectName(entry.subject_id)}
+                                  </Badge>
+                                  <div className="text-xs text-gray-600">
+                                    <div>{getStaffName(entry.staff_id)}</div>
+                                    <div>{getClassroomName(entry.classroom_id)}</div>
                                   </div>
-                                  <p className="text-sm text-gray-600">{slot.subject}</p>
-                                  <p className="text-xs text-gray-500">{slot.staff}</p>
                                 </div>
-                              ))}
-                          </div>
-                        </CardContent>
-                      </Card>
+                              ) : (
+                                <div className="text-gray-400 text-center text-sm">-</div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
                     ))}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="analytics">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg flex items-center">
-                          <Clock className="h-5 w-5 mr-2" />
-                          Time Distribution
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-sm">Morning (9-12)</span>
-                            <span className="text-sm font-medium">40%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-sm">Afternoon (1-5)</span>
-                            <span className="text-sm font-medium">60%</span>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg flex items-center">
-                          <Users className="h-5 w-5 mr-2" />
-                          Staff Utilization
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-sm">Dr. Smith</span>
-                            <Badge variant="outline">85%</Badge>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-sm">Prof. Johnson</span>
-                            <Badge variant="outline">75%</Badge>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-sm">Dr. Brown</span>
-                            <Badge variant="outline">80%</Badge>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg flex items-center">
-                          <BookOpen className="h-5 w-5 mr-2" />
-                          Subject Coverage
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-sm">Core Subjects</span>
-                            <Badge variant="default">100%</Badge>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-sm">Electives</span>
-                            <Badge variant="secondary">85%</Badge>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-sm">Labs</span>
-                            <Badge variant="outline">90%</Badge>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </TabsContent>
-              </Tabs>
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
         )}

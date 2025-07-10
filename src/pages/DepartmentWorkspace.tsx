@@ -1,144 +1,267 @@
 
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '../components/ui/button';
-import { 
-  Building2, 
-  Users, 
-  BookOpen, 
-  Calendar,
-  ArrowLeft,
-  BarChart3,
-  Settings,
-  Activity
-} from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Badge } from '../components/ui/badge';
+import { ArrowLeft, BookOpen, Users, MapPin, Calendar } from 'lucide-react';
+import { toast } from '../hooks/use-toast';
+
+interface Department {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface Subject {
+  id: string;
+  name: string;
+  code: string;
+  credits: number;
+}
+
+interface Staff {
+  id: string;
+  name: string;
+  staff_role: string;
+  subjects_selected?: string;
+}
+
+interface Classroom {
+  id: string;
+  name: string;
+  capacity: number;
+}
+
+interface TimetableEntry {
+  id: string;
+  day: string;
+  time_slot: string;
+  subjects: Subject;
+  profiles: Staff;
+  classrooms: Classroom;
+}
 
 const DepartmentWorkspace = () => {
   const { deptId } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
-  
-  // Mock department data
-  const departmentData = {
-    id: deptId,
-    name: 'Computer Science Engineering',
-    staff_count: 25,
-    subjects_count: 18,
-    classrooms_count: 12,
-    timetable_status: 'Generated',
-    last_updated: '2024-01-15 14:30:00'
+  const [department, setDepartment] = useState<Department | null>(null);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [classrooms, setClassrooms] = useState<Classroom[]>([]);
+  const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const timeSlots = ['09:00-10:00', '10:00-11:00', '11:00-12:00', '12:00-13:00', '14:00-15:00', '15:00-16:00', '16:00-17:00'];
+
+  useEffect(() => {
+    if (deptId) {
+      fetchDepartmentWorkspace();
+    }
+  }, [deptId]);
+
+  const fetchDepartmentWorkspace = async () => {
+    try {
+      // Fetch department info
+      const { data: deptData, error: deptError } = await supabase
+        .from('departments')
+        .select('*')
+        .eq('id', deptId)
+        .single();
+
+      if (deptError) throw deptError;
+
+      // Fetch subjects
+      const { data: subjectData, error: subjectError } = await supabase
+        .from('subjects')
+        .select('*')
+        .eq('department_id', deptId)
+        .order('name');
+
+      if (subjectError) throw subjectError;
+
+      // Fetch staff
+      const { data: staffData, error: staffError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('department_id', deptId)
+        .eq('role', 'staff')
+        .order('name');
+
+      if (staffError) throw staffError;
+
+      // Fetch classrooms
+      const { data: classroomData, error: classroomError } = await supabase
+        .from('classrooms')
+        .select('*')
+        .eq('department_id', deptId)
+        .order('name');
+
+      if (classroomError) throw classroomError;
+
+      // Fetch timetable
+      const { data: timetableData, error: timetableError } = await supabase
+        .from('timetables')
+        .select(`
+          *,
+          subjects (id, name, code, credits),
+          profiles (id, name, staff_role),
+          classrooms (id, name, capacity)
+        `)
+        .eq('department_id', deptId)
+        .order('day, time_slot');
+
+      if (timetableError) throw timetableError;
+
+      setDepartment(deptData);
+      setSubjects(subjectData || []);
+      setStaff(staffData || []);
+      setClassrooms(classroomData || []);
+      setTimetable(timetableData || []);
+    } catch (error) {
+      console.error('Error fetching department workspace:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch department data",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!department) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Department Not Found</h2>
+          <p className="text-gray-600 mb-4">The requested department could not be found.</p>
+          <Button onClick={() => navigate('/')}>Go Home</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
-        <div className="px-6 py-4">
-          <div className="flex items-center space-x-4 mb-4">
-            <Button variant="outline" size="sm" onClick={() => window.history.back()}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => navigate(-1)}
+            >
+              <ArrowLeft className="h-4 w-4" />
             </Button>
-            <div className="flex items-center space-x-3">
-              <Building2 className="h-8 w-8 text-blue-600" />
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">{departmentData.name}</h1>
-                <p className="text-sm text-gray-600">Department Workspace</p>
-              </div>
+            <BookOpen className="h-8 w-8 text-blue-600" />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">{department.name}</h1>
+              <p className="text-sm text-gray-600">Department Code: {department.code}</p>
             </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button 
+              onClick={() => navigate('/timetable-generator')}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Generate Timetable
+            </Button>
           </div>
         </div>
       </header>
 
-      <div className="p-6">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Staff Members</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{departmentData.staff_count}</div>
-              <p className="text-xs text-muted-foreground">Active members</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Subjects</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{departmentData.subjects_count}</div>
-              <p className="text-xs text-muted-foreground">Available subjects</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Classrooms</CardTitle>
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{departmentData.classrooms_count}</div>
-              <p className="text-xs text-muted-foreground">Available rooms</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Timetable</CardTitle>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                <Badge variant="default">{departmentData.timetable_status}</Badge>
-              </div>
-              <p className="text-xs text-muted-foreground">Current status</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Workspace Content */}
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList>
+      <div className="container mx-auto px-4 py-8">
+        <Tabs defaultValue="overview" className="space-y-8">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="subjects">Subjects</TabsTrigger>
+            <TabsTrigger value="staff">Staff</TabsTrigger>
+            <TabsTrigger value="timetable">Timetable</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview">
+          <TabsContent value="overview" className="space-y-6">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Subjects</CardTitle>
+                  <BookOpen className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{subjects.length}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Staff</CardTitle>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{staff.length}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Classrooms</CardTitle>
+                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{classrooms.length}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Classes</CardTitle>
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{timetable.length}</div>
+                </CardContent>
+              </Card>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
                   <CardTitle>Recent Activity</CardTitle>
-                  <CardDescription>Latest updates in your department</CardDescription>
+                  <CardDescription>Latest department updates</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div className="flex items-center space-x-3">
-                      <Activity className="h-4 w-4 text-blue-600" />
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                       <div>
-                        <p className="text-sm font-medium">Timetable Generated</p>
-                        <p className="text-xs text-gray-500">2 hours ago</p>
+                        <p className="text-sm font-medium">Timetable generated</p>
+                        <p className="text-xs text-gray-600">2 hours ago</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
-                      <Users className="h-4 w-4 text-green-600" />
+                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                       <div>
                         <p className="text-sm font-medium">New staff member added</p>
-                        <p className="text-xs text-gray-500">1 day ago</p>
+                        <p className="text-xs text-gray-600">1 day ago</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
-                      <BookOpen className="h-4 w-4 text-orange-600" />
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
                       <div>
-                        <p className="text-sm font-medium">Subject assignments updated</p>
-                        <p className="text-xs text-gray-500">3 days ago</p>
+                        <p className="text-sm font-medium">Subject updated</p>
+                        <p className="text-xs text-gray-600">3 days ago</p>
                       </div>
                     </div>
                   </div>
@@ -148,25 +271,25 @@ const DepartmentWorkspace = () => {
               <Card>
                 <CardHeader>
                   <CardTitle>Quick Actions</CardTitle>
-                  <CardDescription>Common department management tasks</CardDescription>
+                  <CardDescription>Common department tasks</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    <Button className="w-full justify-start" variant="outline">
-                      <Users className="h-4 w-4 mr-2" />
-                      Manage Staff
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button variant="outline" className="h-16 flex flex-col">
+                      <BookOpen className="h-5 w-5 mb-1" />
+                      <span className="text-xs">Add Subject</span>
                     </Button>
-                    <Button className="w-full justify-start" variant="outline">
-                      <BookOpen className="h-4 w-4 mr-2" />
-                      Update Subjects
+                    <Button variant="outline" className="h-16 flex flex-col">
+                      <Users className="h-5 w-5 mb-1" />
+                      <span className="text-xs">Add Staff</span>
                     </Button>
-                    <Button className="w-full justify-start" variant="outline">
-                      <Calendar className="h-4 w-4 mr-2" />
-                      Generate Timetable
+                    <Button variant="outline" className="h-16 flex flex-col">
+                      <MapPin className="h-5 w-5 mb-1" />
+                      <span className="text-xs">Add Room</span>
                     </Button>
-                    <Button className="w-full justify-start" variant="outline">
-                      <Building2 className="h-4 w-4 mr-2" />
-                      Manage Classrooms
+                    <Button variant="outline" className="h-16 flex flex-col">
+                      <Calendar className="h-5 w-5 mb-1" />
+                      <span className="text-xs">View Schedule</span>
                     </Button>
                   </div>
                 </CardContent>
@@ -174,136 +297,119 @@ const DepartmentWorkspace = () => {
             </div>
           </TabsContent>
 
-          <TabsContent value="analytics">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <BarChart3 className="h-5 w-5 mr-2" />
-                    Department Metrics
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Staff Utilization</span>
-                      <Badge variant="outline">85%</Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Classroom Usage</span>
-                      <Badge variant="outline">75%</Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Subject Coverage</span>
-                      <Badge variant="outline">100%</Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Timetable Efficiency</span>
-                      <Badge variant="outline">92%</Badge>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Resource Distribution</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>Core Subjects</span>
-                        <span>60%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div className="bg-blue-600 h-2 rounded-full" style={{ width: '60%' }}></div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>Electives</span>
-                        <span>25%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div className="bg-green-600 h-2 rounded-full" style={{ width: '25%' }}></div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span>Lab Sessions</span>
-                        <span>15%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div className="bg-orange-600 h-2 rounded-full" style={{ width: '15%' }}></div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="settings">
+          <TabsContent value="subjects" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Settings className="h-5 w-5 mr-2" />
-                  Department Settings
-                </CardTitle>
-                <CardDescription>
-                  Configure department-specific preferences and rules
-                </CardDescription>
+                <CardTitle>Department Subjects</CardTitle>
+                <CardDescription>Manage curriculum and subjects</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-6">
-                  <div>
-                    <h4 className="text-lg font-medium mb-4">General Settings</h4>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <div>
-                          <p className="font-medium">Department Name</p>
-                          <p className="text-sm text-gray-600">{departmentData.name}</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {subjects.map((subject) => (
+                    <Card key={subject.id}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="font-medium">{subject.name}</h3>
+                          <Badge variant="outline">{subject.credits} Credits</Badge>
                         </div>
-                        <Button variant="outline" size="sm">Edit</Button>
-                      </div>
-                      <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <div>
-                          <p className="font-medium">Working Hours</p>
-                          <p className="text-sm text-gray-600">9:00 AM - 5:00 PM</p>
-                        </div>
-                        <Button variant="outline" size="sm">Edit</Button>
-                      </div>
-                      <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <div>
-                          <p className="font-medium">Break Duration</p>
-                          <p className="text-sm text-gray-600">60 minutes</p>
-                        </div>
-                        <Button variant="outline" size="sm">Edit</Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-lg font-medium mb-4">Timetable Rules</h4>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <div>
-                          <p className="font-medium">Max Classes per Day</p>
-                          <p className="text-sm text-gray-600">6 classes</p>
-                        </div>
-                        <Button variant="outline" size="sm">Edit</Button>
-                      </div>
-                      <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <div>
-                          <p className="font-medium">Working Days</p>
-                          <p className="text-sm text-gray-600">Monday - Friday</p>
-                        </div>
-                        <Button variant="outline" size="sm">Edit</Button>
-                      </div>
-                    </div>
-                  </div>
+                        <p className="text-sm text-gray-600">Code: {subject.code}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="staff" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Department Staff</CardTitle>
+                <CardDescription>Faculty and staff members</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {staff.map((member) => (
+                    <Card key={member.id}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="font-medium">{member.name}</h3>
+                          <Badge variant="secondary">
+                            {member.staff_role?.replace('_', ' ').toUpperCase() || 'Staff'}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          Subjects: {member.subjects_selected ? 
+                            JSON.parse(member.subjects_selected).length : 0}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="timetable" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Department Timetable</CardTitle>
+                <CardDescription>Current class schedule</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {timetable.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse border border-gray-300">
+                      <thead>
+                        <tr>
+                          <th className="border border-gray-300 p-3 bg-gray-50">Time</th>
+                          {daysOfWeek.map(day => (
+                            <th key={day} className="border border-gray-300 p-3 bg-gray-50">
+                              {day}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {timeSlots.map(timeSlot => (
+                          <tr key={timeSlot}>
+                            <td className="border border-gray-300 p-3 font-medium bg-gray-50">
+                              {timeSlot}
+                            </td>
+                            {daysOfWeek.map(day => {
+                              const entry = timetable.find(
+                                t => t.day === day && t.time_slot === timeSlot
+                              );
+                              return (
+                                <td key={`${day}-${timeSlot}`} className="border border-gray-300 p-3">
+                                  {entry ? (
+                                    <div className="space-y-1">
+                                      <Badge variant="default" className="text-xs">
+                                        {entry.subjects.code}
+                                      </Badge>
+                                      <div className="text-xs text-gray-600">
+                                        <div>{entry.profiles.name}</div>
+                                        <div>{entry.classrooms.name}</div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="text-gray-400 text-center">-</div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No timetable available</p>
+                    <p className="text-sm">Generate a timetable to see the schedule</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

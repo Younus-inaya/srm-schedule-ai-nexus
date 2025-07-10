@@ -14,7 +14,197 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      classrooms: {
+        Row: {
+          capacity: number
+          created_at: string
+          department_id: string
+          id: string
+          name: string
+        }
+        Insert: {
+          capacity: number
+          created_at?: string
+          department_id: string
+          id?: string
+          name: string
+        }
+        Update: {
+          capacity?: number
+          created_at?: string
+          department_id?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "classrooms_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      departments: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          department_id: string | null
+          id: string
+          name: string
+          role: string
+          staff_role: string | null
+          subjects_locked: boolean | null
+          subjects_selected: string | null
+        }
+        Insert: {
+          created_at?: string
+          department_id?: string | null
+          id: string
+          name: string
+          role: string
+          staff_role?: string | null
+          subjects_locked?: boolean | null
+          subjects_selected?: string | null
+        }
+        Update: {
+          created_at?: string
+          department_id?: string | null
+          id?: string
+          name?: string
+          role?: string
+          staff_role?: string | null
+          subjects_locked?: boolean | null
+          subjects_selected?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subjects: {
+        Row: {
+          code: string
+          created_at: string
+          credits: number | null
+          department_id: string
+          id: string
+          name: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          credits?: number | null
+          department_id: string
+          id?: string
+          name: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          credits?: number | null
+          department_id?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subjects_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      timetables: {
+        Row: {
+          classroom_id: string
+          created_at: string
+          day: string
+          department_id: string
+          id: string
+          staff_id: string
+          subject_id: string
+          time_slot: string
+        }
+        Insert: {
+          classroom_id: string
+          created_at?: string
+          day: string
+          department_id: string
+          id?: string
+          staff_id: string
+          subject_id: string
+          time_slot: string
+        }
+        Update: {
+          classroom_id?: string
+          created_at?: string
+          day?: string
+          department_id?: string
+          id?: string
+          staff_id?: string
+          subject_id?: string
+          time_slot?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timetables_classroom_id_fkey"
+            columns: ["classroom_id"]
+            isOneToOne: false
+            referencedRelation: "classrooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timetables_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timetables_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timetables_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

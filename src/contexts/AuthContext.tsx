@@ -1,5 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface User {
   id: string;
@@ -36,21 +38,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored authentication
-    const token = localStorage.getItem('auth_token');
-    const userData = localStorage.getItem('user_data');
-    
-    if (token && userData) {
-      try {
-        setUser(JSON.parse(userData));
-      } catch (error) {
-        console.error('Error parsing user data:', error);
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('user_data');
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        fetchUserProfile(session.user);
+      } else {
+        setLoading(false);
       }
-    }
-    setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchUserProfile(session.user);
+      } else {
+        setUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  const fetchUserProfile = async (authUser: SupabaseUser) => {
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select(`
+          *,
+          departments:department_id (
+            id,
+            name,
+            code
+          )
+        `)
+        .eq('id', authUser.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        setLoading(false);
+        return;
+      }
+
+      if (profile) {
+        setUser({
+          id: profile.id,
+          email: authUser.email!,
+          name: profile.name,
+          role: profile.role,
+          department_id: profile.department_id,
+          staff_role: profile.staff_role,
+          subjects_selected: profile.subjects_selected ? JSON.parse(profile.subjects_selected) : [],
+          subjects_locked: profile.subjects_locked,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
@@ -61,23 +109,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Only @srmist.edu.in emails are allowed');
       }
 
-      // TODO: Replace with actual API call to Flask backend
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setUser(data.user);
-        localStorage.setItem('auth_token', data.token);
-        localStorage.setItem('user_data', JSON.stringify(data.user));
-        return true;
+      if (error) {
+        console.error('Login error:', error);
+        return false;
       }
-      return false;
+
+      return true;
     } catch (error) {
       console.error('Login error:', error);
       return false;
@@ -95,23 +137,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Only @srmist.edu.in emails are allowed');
       }
 
-      // TODO: Replace with actual API call to Flask backend
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(userData),
+      const { error } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+        options: {
+          data: {
+            name: userData.name,
+            role: userData.role,
+            department_id: userData.department_id,
+            staff_role: userData.staff_role,
+          }
+        }
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setUser(data.user);
-        localStorage.setItem('auth_token', data.token);
-        localStorage.setItem('user_data', JSON.stringify(data.user));
-        return true;
+      if (error) {
+        console.error('Registration error:', error);
+        return false;
       }
-      return false;
+
+      return true;
     } catch (error) {
       console.error('Registration error:', error);
       return false;
@@ -120,10 +164,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('user_data');
   };
 
   const value = {
