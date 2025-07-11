@@ -46,6 +46,54 @@ export type Database = {
           },
         ]
       }
+      constraints: {
+        Row: {
+          created_at: string
+          created_by: string
+          department_id: string | null
+          id: string
+          max_hours: number
+          max_subjects: number
+          role: string
+          subject_type: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          department_id?: string | null
+          id?: string
+          max_hours?: number
+          max_subjects?: number
+          role: string
+          subject_type: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          department_id?: string | null
+          id?: string
+          max_hours?: number
+          max_subjects?: number
+          role?: string
+          subject_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "constraints_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "constraints_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       departments: {
         Row: {
           code: string
