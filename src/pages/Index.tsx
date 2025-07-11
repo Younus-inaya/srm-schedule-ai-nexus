@@ -1,6 +1,7 @@
 
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/ClerkAuthContext';
 import { Navigate } from 'react-router-dom';
+import { SignInButton, SignUpButton, UserButton, SignedIn, SignedOut } from '@clerk/clerk-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { GraduationCap, Users, Calendar, Zap, Shield, Database } from 'lucide-react';
@@ -35,12 +36,17 @@ const Index = () => {
             </div>
           </div>
           <div className="space-x-4">
-            <Button variant="outline" onClick={() => window.location.href = '/login'}>
-              Login
-            </Button>
-            <Button onClick={() => window.location.href = '/register'}>
-              Register
-            </Button>
+            <SignedOut>
+              <SignInButton mode="modal">
+                <Button variant="outline">Login</Button>
+              </SignInButton>
+              <SignUpButton mode="modal">
+                <Button>Register</Button>
+              </SignUpButton>
+            </SignedOut>
+            <SignedIn>
+              <UserButton />
+            </SignedIn>
           </div>
         </div>
       </header>
@@ -56,9 +62,13 @@ const Index = () => {
             conflict resolution, and seamless department management for SRM College Ramapuram.
           </p>
           <div className="space-x-4">
-            <Button size="lg" className="bg-blue-600 hover:bg-blue-700" onClick={() => window.location.href = '/register'}>
-              Get Started
-            </Button>
+            <SignedOut>
+              <SignUpButton mode="modal">
+                <Button size="lg" className="bg-blue-600 hover:bg-blue-700">
+                  Get Started
+                </Button>
+              </SignUpButton>
+            </SignedOut>
             <Button size="lg" variant="outline">
               Learn More
             </Button>
@@ -128,7 +138,7 @@ const Index = () => {
               </CardHeader>
               <CardContent>
                 <CardDescription>
-                  JWT-based security with @srmist.edu.in email validation and CSRF protection
+                  Enterprise-grade security with Clerk authentication and role-based access control
                 </CardDescription>
               </CardContent>
             </Card>
@@ -144,53 +154,6 @@ const Index = () => {
                 </CardDescription>
               </CardContent>
             </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* System Architecture */}
-      <section className="py-16 px-4 bg-gray-50">
-        <div className="container mx-auto">
-          <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
-            System Architecture
-          </h2>
-          <div className="grid md:grid-cols-2 gap-8 items-center">
-            <div>
-              <h3 className="text-2xl font-semibold mb-4">Technology Stack</h3>
-              <ul className="space-y-3">
-                <li className="flex items-center">
-                  <div className="w-3 h-3 bg-blue-600 rounded-full mr-3"></div>
-                  <span><strong>Frontend:</strong> React/Next.js with TypeScript</span>
-                </li>
-                <li className="flex items-center">
-                  <div className="w-3 h-3 bg-green-600 rounded-full mr-3"></div>
-                  <span><strong>Backend:</strong> Flask (Python) REST API</span>
-                </li>
-                <li className="flex items-center">
-                  <div className="w-3 h-3 bg-purple-600 rounded-full mr-3"></div>
-                  <span><strong>Database:</strong> SQLite with proper relationships</span>
-                </li>
-                <li className="flex items-center">
-                  <div className="w-3 h-3 bg-orange-600 rounded-full mr-3"></div>
-                  <span><strong>AI Engine:</strong> Custom Python algorithms</span>
-                </li>
-                <li className="flex items-center">
-                  <div className="w-3 h-3 bg-red-600 rounded-full mr-3"></div>
-                  <span><strong>Security:</strong> JWT + CSRF protection</span>
-                </li>
-              </ul>
-            </div>
-            <div className="bg-white p-6 rounded-lg shadow-lg">
-              <h3 className="text-xl font-semibold mb-4">Key Benefits</h3>
-              <ul className="space-y-2 text-gray-600">
-                <li>✅ Automated conflict resolution</li>
-                <li>✅ Real-time timetable generation</li>
-                <li>✅ Multi-department isolation</li>
-                <li>✅ Role-based access control</li>
-                <li>✅ Excel export capabilities</li>
-                <li>✅ Scalable architecture</li>
-              </ul>
-            </div>
           </div>
         </div>
       </section>
