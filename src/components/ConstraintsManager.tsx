@@ -78,9 +78,16 @@ const ConstraintsManager = ({ open, onOpenChange, userRole }: ConstraintsManager
   const fetchConstraints = async () => {
     try {
       let query = supabase
-        .from('constraints' as any)
+        .from('constraints')
         .select(`
-          *,
+          id,
+          department_id,
+          role,
+          subject_type,
+          max_subjects,
+          max_hours,
+          created_by,
+          created_at,
           departments:department_id (
             name,
             code
@@ -133,7 +140,7 @@ const ConstraintsManager = ({ open, onOpenChange, userRole }: ConstraintsManager
 
       if (editingConstraint) {
         const { error } = await supabase
-          .from('constraints' as any)
+          .from('constraints')
           .update(constraintData)
           .eq('id', editingConstraint.id);
 
@@ -144,7 +151,7 @@ const ConstraintsManager = ({ open, onOpenChange, userRole }: ConstraintsManager
         });
       } else {
         const { error } = await supabase
-          .from('constraints' as any)
+          .from('constraints')
           .insert([constraintData]);
 
         if (error) throw error;
@@ -183,7 +190,7 @@ const ConstraintsManager = ({ open, onOpenChange, userRole }: ConstraintsManager
   const handleDelete = async (id: string) => {
     try {
       const { error } = await supabase
-        .from('constraints' as any)
+        .from('constraints')
         .delete()
         .eq('id', id);
 
