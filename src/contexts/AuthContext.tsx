@@ -86,9 +86,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: profile.id,
           email: authUser.email!,
           name: profile.name,
-          role: profile.role,
+          role: profile.role as 'main_admin' | 'dept_admin' | 'staff',
           department_id: profile.department_id,
-          staff_role: profile.staff_role,
+          staff_role: profile.staff_role as 'assistant_professor' | 'professor' | 'hod' | undefined,
           subjects_selected: profile.subjects_selected ? JSON.parse(profile.subjects_selected) : [],
           subjects_locked: profile.subjects_locked,
         });

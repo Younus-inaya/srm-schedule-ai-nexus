@@ -71,6 +71,7 @@ export type Database = {
         Row: {
           created_at: string
           department_id: string | null
+          email: string | null
           id: string
           name: string
           role: string
@@ -81,6 +82,7 @@ export type Database = {
         Insert: {
           created_at?: string
           department_id?: string | null
+          email?: string | null
           id: string
           name: string
           role: string
@@ -91,6 +93,7 @@ export type Database = {
         Update: {
           created_at?: string
           department_id?: string | null
+          email?: string | null
           id?: string
           name?: string
           role?: string
@@ -99,6 +102,13 @@ export type Database = {
           subjects_selected?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_department"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "profiles_department_id_fkey"
             columns: ["department_id"]
