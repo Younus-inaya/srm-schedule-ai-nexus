@@ -85,20 +85,27 @@ const Register = () => {
     if (!validateForm()) return;
     
     setIsSubmitting(true);
+    setErrors([]);
     
     try {
-      const success = await register(formData);
+      const result = await register(formData);
       
-      if (success) {
+      if (result.success) {
         toast({
           title: "Registration Successful",
-          description: "Welcome to SRM Timetable AI!",
+          description: result.error || "Welcome to SRM Timetable AI!",
         });
+        
+        // If there's an error message, it's likely about email confirmation
+        if (result.error) {
+          setErrors([result.error]);
+        }
       } else {
-        setErrors(['Registration failed. Please try again.']);
+        setErrors([result.error || 'Registration failed. Please try again.']);
       }
     } catch (error) {
-      setErrors(['Registration failed. Please try again.']);
+      console.error('Registration error:', error);
+      setErrors(['An unexpected error occurred. Please try again.']);
     } finally {
       setIsSubmitting(false);
     }
@@ -130,9 +137,13 @@ const Register = () => {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center space-x-3 mb-4">
-            <GraduationCap className="h-10 w-10 text-blue-600" />
-            <h1 className="text-3xl font-bold text-gray-900">SRM Timetable AI</h1>
+            <img 
+              src="/lovable-uploads/fad397d7-a758-4dcd-88f0-c23bceaaa248.png" 
+              alt="SRM Logo" 
+              className="h-16 w-auto"
+            />
           </div>
+          <h1 className="text-3xl font-bold text-gray-900">SRM Timetable AI</h1>
           <p className="text-gray-600">SRM College Ramapuram</p>
         </div>
 

@@ -49,20 +49,22 @@ const Login = () => {
     if (!validateForm()) return;
     
     setIsSubmitting(true);
+    setErrors([]);
     
     try {
-      const success = await login(formData.email, formData.password);
+      const result = await login(formData.email, formData.password);
       
-      if (success) {
+      if (result.success) {
         toast({
           title: "Login Successful",
           description: "Welcome back to SRM Timetable AI!",
         });
       } else {
-        setErrors(['Invalid email or password']);
+        setErrors([result.error || 'Login failed. Please try again.']);
       }
     } catch (error) {
-      setErrors(['Login failed. Please try again.']);
+      console.error('Login error:', error);
+      setErrors(['An unexpected error occurred. Please try again.']);
     } finally {
       setIsSubmitting(false);
     }
@@ -79,15 +81,27 @@ const Login = () => {
     }
   };
 
+  // Demo credentials for testing
+  const handleDemoLogin = () => {
+    setFormData({
+      email: 'admin@srmist.edu.in',
+      password: 'admin123',
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center space-x-3 mb-4">
-            <GraduationCap className="h-10 w-10 text-blue-600" />
-            <h1 className="text-3xl font-bold text-gray-900">SRM Timetable AI</h1>
+            <img 
+              src="/lovable-uploads/fad397d7-a758-4dcd-88f0-c23bceaaa248.png" 
+              alt="SRM Logo" 
+              className="h-16 w-auto"
+            />
           </div>
+          <h1 className="text-3xl font-bold text-gray-900">SRM Timetable AI</h1>
           <p className="text-gray-600">SRM College Ramapuram</p>
         </div>
 
@@ -158,6 +172,17 @@ const Login = () => {
               </Button>
             </form>
 
+            <div className="mt-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleDemoLogin}
+              >
+                Use Demo Credentials
+              </Button>
+            </div>
+
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
                 Don't have an account?{' '}
@@ -171,6 +196,7 @@ const Login = () => {
 
         <div className="mt-8 text-center text-sm text-gray-500">
           <p>Only @srmist.edu.in email addresses are allowed</p>
+          <p className="mt-2">For testing: admin@srmist.edu.in / admin123</p>
         </div>
       </div>
     </div>
