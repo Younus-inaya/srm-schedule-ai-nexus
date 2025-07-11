@@ -5,6 +5,7 @@ import { SignInButton, SignUpButton, UserButton, SignedIn, SignedOut } from '@cl
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { GraduationCap, Users, Calendar, Zap, Shield, Database } from 'lucide-react';
+import DemoSetup from '../components/DemoSetup';
 
 const Index = () => {
   const { isAuthenticated, user } = useAuth();
@@ -61,7 +62,7 @@ const Index = () => {
             Revolutionize academic scheduling with intelligent automation, 
             conflict resolution, and seamless department management for SRM College Ramapuram.
           </p>
-          <div className="space-x-4">
+          <div className="space-x-4 mb-12">
             <SignedOut>
               <SignUpButton mode="modal">
                 <Button size="lg" className="bg-blue-600 hover:bg-blue-700">
@@ -73,6 +74,13 @@ const Index = () => {
               Learn More
             </Button>
           </div>
+
+          {/* Demo Setup Section */}
+          <SignedIn>
+            <div className="mb-12">
+              <DemoSetup />
+            </div>
+          </SignedIn>
         </div>
       </section>
 

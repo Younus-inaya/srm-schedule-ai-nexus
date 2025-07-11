@@ -1,6 +1,7 @@
 
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useUser, useAuth as useClerkAuth } from '@clerk/clerk-react';
+import { syncUserProfile } from '../utils/profileSync';
 
 interface User {
   id: string;
@@ -9,6 +10,8 @@ interface User {
   role: 'main_admin' | 'dept_admin' | 'staff';
   department_id?: string;
   staff_role?: 'assistant_professor' | 'professor' | 'hod';
+  subjects_selected?: string;
+  subjects_locked?: boolean;
 }
 
 interface AuthContextType {
@@ -31,24 +34,74 @@ export const useAuth = () => {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user: clerkUser, isLoaded } = useUser();
   const { signOut: clerkSignOut } = useClerkAuth();
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const user: User | null = clerkUser ? {
-    id: clerkUser.id,
-    email: clerkUser.primaryEmailAddress?.emailAddress || '',
-    name: clerkUser.fullName || clerkUser.firstName || 'User',
-    role: (clerkUser.publicMetadata?.role as 'main_admin' | 'dept_admin' | 'staff') || 'staff',
-    department_id: clerkUser.publicMetadata?.department_id as string,
-    staff_role: clerkUser.publicMetadata?.staff_role as 'assistant_professor' | 'professor' | 'hod'
-  } : null;
+  useEffect(() => {
+    const syncAndSetUser = async () => {
+      if (isLoaded) {
+        if (clerkUser) {
+          try {
+            // Sync user profile with Supabase
+            const profile = await syncUserProfile(clerkUser);
+            
+            if (profile) {
+              setUser({
+                id: profile.id,
+                email: profile.email,
+                name: profile.name,
+                role: profile.role,
+                department_id: profile.department_id,
+                staff_role: profile.staff_role,
+                subjects_selected: profile.subjects_selected,
+                subjects_locked: profile.subjects_locked
+              });
+            } else {
+              // Fallback to Clerk data if Supabase sync fails
+              setUser({
+                id: clerkUser.id,
+                email: clerkUser.primaryEmailAddress?.emailAddress || '',
+                name: clerkUser.fullName || clerkUser.firstName || 'User',
+                role: (clerkUser.publicMetadata?.role as any) || 'staff',
+                department_id: clerkUser.publicMetadata?.department_id as string,
+                staff_role: clerkUser.publicMetadata?.staff_role as any,
+                subjects_selected: null,
+                subjects_locked: false
+              });
+            }
+          } catch (error) {
+            console.error('Error syncing user profile:', error);
+            // Fallback to Clerk data
+            setUser({
+              id: clerkUser.id,
+              email: clerkUser.primaryEmailAddress?.emailAddress || '',
+              name: clerkUser.fullName || clerkUser.firstName || 'User',
+              role: (clerkUser.publicMetadata?.role as any) || 'staff',
+              department_id: clerkUser.publicMetadata?.department_id as string,
+              staff_role: clerkUser.publicMetadata?.staff_role as any,
+              subjects_selected: null,
+              subjects_locked: false
+            });
+          }
+        } else {
+          setUser(null);
+        }
+        setLoading(false);
+      }
+    };
+
+    syncAndSetUser();
+  }, [clerkUser, isLoaded]);
 
   const signOut = async () => {
     await clerkSignOut();
+    setUser(null);
   };
 
   const value = {
     user,
-    loading: !isLoaded,
-    isAuthenticated: !!clerkUser,
+    loading,
+    isAuthenticated: !!clerkUser && !!user,
     signOut,
   };
 
