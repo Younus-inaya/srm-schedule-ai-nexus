@@ -1,6 +1,6 @@
 
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../contexts/ClerkAuthContext';
+import { useAuth } from '../contexts/PythonAuthContext';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;

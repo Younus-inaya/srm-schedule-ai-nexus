@@ -1,61 +1,122 @@
 
 import { supabase } from '@/integrations/supabase/client';
 
-interface UserProfile {
+export interface UserProfile {
   id: string;
-  name: string;
   email: string;
+  name: string;
   role: 'main_admin' | 'dept_admin' | 'staff';
   department_id?: string;
   staff_role?: 'assistant_professor' | 'professor' | 'hod';
-  subjects_selected?: string;
+  subjects_selected?: string[];
   subjects_locked?: boolean;
 }
 
-export const syncUserProfile = async (user: any): Promise<UserProfile | null> => {
+export const syncUserProfile = async (clerkUser: any): Promise<UserProfile | null> => {
+  if (!clerkUser) return null;
+
   try {
-    // Check if profile already exists
+    console.log('Syncing user profile for:', clerkUser.id);
+
+    // Check if profile exists
     const { data: existingProfile, error: fetchError } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', user.id)
+      .eq('id', clerkUser.id)
       .single();
 
     if (fetchError && fetchError.code !== 'PGRST116') {
       console.error('Error fetching profile:', fetchError);
-      throw fetchError;
+      return null;
     }
 
     if (existingProfile) {
-      return existingProfile;
+      // Return existing profile with proper typing
+      const profile: UserProfile = {
+        id: existingProfile.id,
+        email: existingProfile.email || clerkUser.emailAddresses[0]?.emailAddress || '',
+        name: existingProfile.name,
+        role: existingProfile.role as 'main_admin' | 'dept_admin' | 'staff',
+        department_id: existingProfile.department_id || undefined,
+        staff_role: existingProfile.staff_role as 'assistant_professor' | 'professor' | 'hod' | undefined,
+        subjects_selected: existingProfile.subjects_selected ? JSON.parse(existingProfile.subjects_selected) : [],
+        subjects_locked: existingProfile.subjects_locked || false,
+      };
+      return profile;
     }
 
     // Create new profile if it doesn't exist
-    const newProfile: Partial<UserProfile> = {
-      id: user.id,
-      name: user.fullName || user.firstName || 'User',
-      email: user.primaryEmailAddress?.emailAddress || '',
-      role: (user.publicMetadata?.role as any) || 'staff',
-      department_id: user.publicMetadata?.department_id as string,
-      staff_role: user.publicMetadata?.staff_role as any,
-      subjects_selected: null,
-      subjects_locked: false
+    const newProfileData = {
+      id: clerkUser.id,
+      email: clerkUser.emailAddresses[0]?.emailAddress || '',
+      name: clerkUser.firstName && clerkUser.lastName 
+        ? `${clerkUser.firstName} ${clerkUser.lastName}` 
+        : clerkUser.username || 'New User',
+      role: 'staff' as const, // Default role
+      department_id: null,
+      staff_role: null,
+      subjects_selected: '[]',
+      subjects_locked: false,
+      created_at: new Date().toISOString(),
     };
 
-    const { data: createdProfile, error: createError } = await supabase
+    const { data: newProfile, error: insertError } = await supabase
       .from('profiles')
-      .insert([newProfile])
+      .insert([newProfileData])
       .select()
       .single();
 
-    if (createError) {
-      console.error('Error creating profile:', createError);
-      throw createError;
+    if (insertError) {
+      console.error('Error creating profile:', insertError);
+      return null;
     }
 
-    return createdProfile;
+    if (newProfile) {
+      const profile: UserProfile = {
+        id: newProfile.id,
+        email: newProfile.email || '',
+        name: newProfile.name,
+        role: newProfile.role as 'main_admin' | 'dept_admin' | 'staff',
+        department_id: newProfile.department_id || undefined,
+        staff_role: newProfile.staff_role as 'assistant_professor' | 'professor' | 'hod' | undefined,
+        subjects_selected: newProfile.subjects_selected ? JSON.parse(newProfile.subjects_selected) : [],
+        subjects_locked: newProfile.subjects_locked || false,
+      };
+      return profile;
+    }
+
+    return null;
   } catch (error) {
     console.error('Error syncing user profile:', error);
     return null;
+  }
+};
+
+export const updateUserProfile = async (userId: string, updates: Partial<UserProfile>): Promise<boolean> => {
+  try {
+    const updateData: any = { ...updates };
+    
+    // Convert subjects_selected array to JSON string for database
+    if (updates.subjects_selected) {
+      updateData.subjects_selected = JSON.stringify(updates.subjects_selected);
+    }
+
+    // Remove id from updates as it shouldn't be updated
+    delete updateData.id;
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updateData)
+      .eq('id', userId);
+
+    if (error) {
+      console.error('Error updating profile:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    return false;
   }
 };
