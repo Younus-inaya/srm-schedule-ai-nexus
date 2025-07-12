@@ -1,5 +1,5 @@
 
-import { supabase } from '@/integrations/supabase/client';
+import { backendApi, User } from '@/services/backendApi';
 
 export interface UserProfile {
   id: string;
@@ -12,80 +12,25 @@ export interface UserProfile {
   subjects_locked?: boolean;
 }
 
-export const syncUserProfile = async (clerkUser: any): Promise<UserProfile | null> => {
-  if (!clerkUser) return null;
+export const syncUserProfile = async (user: User): Promise<UserProfile | null> => {
+  if (!user) return null;
 
   try {
-    console.log('Syncing user profile for:', clerkUser.id);
+    console.log('Syncing user profile for:', user.id);
 
-    // Check if profile exists
-    const { data: existingProfile, error: fetchError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', clerkUser.id)
-      .single();
-
-    if (fetchError && fetchError.code !== 'PGRST116') {
-      console.error('Error fetching profile:', fetchError);
-      return null;
-    }
-
-    if (existingProfile) {
-      // Return existing profile with proper typing
-      const profile: UserProfile = {
-        id: existingProfile.id,
-        email: existingProfile.email || clerkUser.emailAddresses[0]?.emailAddress || '',
-        name: existingProfile.name,
-        role: existingProfile.role as 'main_admin' | 'dept_admin' | 'staff',
-        department_id: existingProfile.department_id || undefined,
-        staff_role: existingProfile.staff_role as 'assistant_professor' | 'professor' | 'hod' | undefined,
-        subjects_selected: existingProfile.subjects_selected ? JSON.parse(existingProfile.subjects_selected) : [],
-        subjects_locked: existingProfile.subjects_locked || false,
-      };
-      return profile;
-    }
-
-    // Create new profile if it doesn't exist
-    const newProfileData = {
-      id: clerkUser.id,
-      email: clerkUser.emailAddresses[0]?.emailAddress || '',
-      name: clerkUser.firstName && clerkUser.lastName 
-        ? `${clerkUser.firstName} ${clerkUser.lastName}` 
-        : clerkUser.username || 'New User',
-      role: 'staff' as const, // Default role
-      department_id: null,
-      staff_role: null,
-      subjects_selected: '[]',
-      subjects_locked: false,
-      created_at: new Date().toISOString(),
+    // Convert backend user to UserProfile format
+    const profile: UserProfile = {
+      id: user.id,
+      email: user.email || '',
+      name: user.name,
+      role: user.role,
+      department_id: user.department_id,
+      staff_role: undefined, // This would need to be added to the backend User interface
+      subjects_selected: [], // This would need to be fetched separately
+      subjects_locked: false, // This would need to be fetched separately
     };
 
-    const { data: newProfile, error: insertError } = await supabase
-      .from('profiles')
-      .insert([newProfileData])
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('Error creating profile:', insertError);
-      return null;
-    }
-
-    if (newProfile) {
-      const profile: UserProfile = {
-        id: newProfile.id,
-        email: newProfile.email || '',
-        name: newProfile.name,
-        role: newProfile.role as 'main_admin' | 'dept_admin' | 'staff',
-        department_id: newProfile.department_id || undefined,
-        staff_role: newProfile.staff_role as 'assistant_professor' | 'professor' | 'hod' | undefined,
-        subjects_selected: newProfile.subjects_selected ? JSON.parse(newProfile.subjects_selected) : [],
-        subjects_locked: newProfile.subjects_locked || false,
-      };
-      return profile;
-    }
-
-    return null;
+    return profile;
   } catch (error) {
     console.error('Error syncing user profile:', error);
     return null;
@@ -94,23 +39,18 @@ export const syncUserProfile = async (clerkUser: any): Promise<UserProfile | nul
 
 export const updateUserProfile = async (userId: string, updates: Partial<UserProfile>): Promise<boolean> => {
   try {
-    const updateData: any = { ...updates };
+    // Convert UserProfile updates to backend User format
+    const backendUpdates: Partial<User> = {
+      name: updates.name,
+      email: updates.email,
+      role: updates.role,
+      department_id: updates.department_id,
+    };
+
+    const result = await backendApi.updateUser(userId, backendUpdates);
     
-    // Convert subjects_selected array to JSON string for database
-    if (updates.subjects_selected) {
-      updateData.subjects_selected = JSON.stringify(updates.subjects_selected);
-    }
-
-    // Remove id from updates as it shouldn't be updated
-    delete updateData.id;
-
-    const { error } = await supabase
-      .from('profiles')
-      .update(updateData)
-      .eq('id', userId);
-
-    if (error) {
-      console.error('Error updating profile:', error);
+    if (!result.success) {
+      console.error('Error updating profile:', result.error);
       return false;
     }
 

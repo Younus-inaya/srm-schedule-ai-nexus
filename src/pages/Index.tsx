@@ -1,7 +1,6 @@
 
-import { useAuth } from '../contexts/ClerkAuthContext';
-import { Navigate } from 'react-router-dom';
-import { SignInButton, SignUpButton, UserButton, SignedIn, SignedOut } from '@clerk/clerk-react';
+import { useAuth } from '../contexts/PythonAuthContext';
+import { Navigate, Link } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { GraduationCap, Users, Calendar, Zap, Shield, Database } from 'lucide-react';
@@ -37,17 +36,23 @@ const Index = () => {
             </div>
           </div>
           <div className="space-x-4">
-            <SignedOut>
-              <SignInButton mode="modal">
-                <Button variant="outline">Login</Button>
-              </SignInButton>
-              <SignUpButton mode="modal">
-                <Button>Register</Button>
-              </SignUpButton>
-            </SignedOut>
-            <SignedIn>
-              <UserButton />
-            </SignedIn>
+            {!isAuthenticated ? (
+              <>
+                <Link to="/login">
+                  <Button variant="outline">Login</Button>
+                </Link>
+                <Link to="/register">
+                  <Button>Register</Button>
+                </Link>
+              </>
+            ) : (
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-600">Welcome, {user?.name}</span>
+                <Button variant="outline" onClick={() => window.location.href = '/login'}>
+                  Dashboard
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -63,24 +68,24 @@ const Index = () => {
             conflict resolution, and seamless department management for SRM College Ramapuram.
           </p>
           <div className="space-x-4 mb-12">
-            <SignedOut>
-              <SignUpButton mode="modal">
+            {!isAuthenticated ? (
+              <Link to="/login">
                 <Button size="lg" className="bg-blue-600 hover:bg-blue-700">
                   Get Started
                 </Button>
-              </SignUpButton>
-            </SignedOut>
+              </Link>
+            ) : null}
             <Button size="lg" variant="outline">
               Learn More
             </Button>
           </div>
 
-          {/* Demo Setup Section */}
-          <SignedIn>
+          {/* Demo Setup Section - Only show for authenticated users */}
+          {isAuthenticated && (
             <div className="mb-12">
               <DemoSetup />
             </div>
-          </SignedIn>
+          )}
         </div>
       </section>
 
@@ -146,7 +151,7 @@ const Index = () => {
               </CardHeader>
               <CardContent>
                 <CardDescription>
-                  Enterprise-grade security with Clerk authentication and role-based access control
+                  Secure role-based authentication with auto-generated credentials and profile management
                 </CardDescription>
               </CardContent>
             </Card>
