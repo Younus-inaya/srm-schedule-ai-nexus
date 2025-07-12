@@ -59,7 +59,7 @@ export const PythonAuthProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const response = await backendApi.login({ email, password });
       
       if (response.success && response.data) {
-        const { user: userData, token } = response.data;
+        const { user: userData } = response.data;
         console.log('Login successful:', userData.email, 'Role:', userData.role);
         setUser(userData);
         return { success: true };

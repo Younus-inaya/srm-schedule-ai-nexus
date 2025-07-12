@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { PythonAuthProvider } from "./contexts/PythonAuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import MainAdminDashboard from "./pages/MainAdminDashboard";
@@ -16,57 +17,66 @@ import DepartmentWorkspace from "./pages/DepartmentWorkspace";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      retry: 1,
+    },
+  },
+});
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <PythonAuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            
-            {/* Protected Routes */}
-            <Route path="/main-admin" element={
-              <ProtectedRoute requiredRole="main_admin">
-                <MainAdminDashboard />
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/dept-admin" element={
-              <ProtectedRoute requiredRole="dept_admin">
-                <DepartmentAdminDashboard />
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/staff" element={
-              <ProtectedRoute requiredRole="staff">
-                <StaffDashboard />
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/timetable-generator" element={
-              <ProtectedRoute>
-                <TimetableGenerator />
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/department/:deptId" element={
-              <ProtectedRoute>
-                <DepartmentWorkspace />
-              </ProtectedRoute>
-            } />
-            
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </PythonAuthProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <PythonAuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              
+              {/* Protected Routes */}
+              <Route path="/main-admin" element={
+                <ProtectedRoute requiredRole="main_admin">
+                  <MainAdminDashboard />
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/dept-admin" element={
+                <ProtectedRoute requiredRole="dept_admin">
+                  <DepartmentAdminDashboard />
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/staff" element={
+                <ProtectedRoute requiredRole="staff">
+                  <StaffDashboard />
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/timetable-generator" element={
+                <ProtectedRoute>
+                  <TimetableGenerator />
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/department/:deptId" element={
+                <ProtectedRoute>
+                  <DepartmentWorkspace />
+                </ProtectedRoute>
+              } />
+              
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </PythonAuthProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;

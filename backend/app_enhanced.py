@@ -53,31 +53,13 @@ def init_enhanced_db():
         )
     ''')
     
-    # ... keep existing code (departments, subjects, classrooms, timetables tables)
-    
-    # API Keys table for admin configuration
+    # Departments table
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS api_keys (
+        CREATE TABLE IF NOT EXISTS departments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            service_name TEXT NOT NULL UNIQUE,
-            api_key TEXT NOT NULL,
-            updated_by INTEGER NOT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (updated_by) REFERENCES users (id)
-        )
-    ''')
-    
-    # Department constraints table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS department_constraints (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            department_id INTEGER NOT NULL,
-            constraint_type TEXT NOT NULL,
-            constraint_value TEXT NOT NULL,
-            created_by INTEGER NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (department_id) REFERENCES departments (id),
-            FOREIGN KEY (created_by) REFERENCES users (id)
+            name TEXT NOT NULL,
+            code TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
@@ -93,11 +75,10 @@ def init_enhanced_db():
     conn.commit()
     conn.close()
 
-def generate_credentials():
-    """Generate unique username and password"""
-    username = 'user_' + ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(6))
-    password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
-    return username, password
+# Health check route
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'healthy', 'message': 'SRM Timetable AI Backend is running'}), 200
 
 # Authentication routes
 @app.route('/api/auth/login', methods=['POST'])
@@ -195,7 +176,7 @@ def verify_token():
             'department_name': user_data[10]
         }
         
-        return jsonify({'success': True, 'user': user}), 200
+        return jsonify({'success': True, 'data': {'user': user}}), 200
         
     except Exception as e:
         logger.error(f"Token verification error: {str(e)}")
@@ -206,12 +187,122 @@ def verify_token():
 def logout():
     return jsonify({'success': True, 'message': 'Logged out successfully'}), 200
 
-# Main Admin routes
-@app.route('/api/admin/register-user', methods=['POST'])
+# User Management routes
+@app.route('/api/users/<user_id>', methods=['PUT'])
 @jwt_required()
-def register_user():
+def update_user(user_id):
     try:
         current_user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        # Check if user exists and user has permission to update
+        conn = sqlite3.connect('timetable_enhanced.db')
+        cursor = conn.cursor()
+        
+        # Verify current user has admin role or is updating their own profile
+        cursor.execute('SELECT role FROM users WHERE id = ?', (current_user_id,))
+        current_user_role = cursor.fetchone()
+        
+        if not current_user_role or (current_user_role[0] != 'main_admin' and str(current_user_id) != user_id):
+            return jsonify({'error': 'Permission denied'}), 403
+        
+        # Build update query dynamically based on provided fields
+        update_fields = []
+        update_values = []
+        
+        allowed_fields = ['name', 'email', 'role', 'department_id', 'staff_role', 'subjects_selected', 'subjects_locked']
+        
+        for field in allowed_fields:
+            if field in data:
+                if field == 'subjects_selected' and isinstance(data[field], list):
+                    update_fields.append(f"{field} = ?")
+                    update_values.append(','.join(data[field]))
+                else:
+                    update_fields.append(f"{field} = ?")
+                    update_values.append(data[field])
+        
+        if not update_fields:
+            return jsonify({'error': 'No valid fields to update'}), 400
+        
+        update_values.append(user_id)
+        
+        cursor.execute(f'''
+            UPDATE users 
+            SET {', '.join(update_fields)}
+            WHERE id = ? AND is_active = 1
+        ''', update_values)
+        
+        if cursor.rowcount == 0:
+            return jsonify({'error': 'User not found or no changes made'}), 404
+        
+        # Get updated user data
+        cursor.execute('''
+            SELECT u.id, u.name, u.email, u.role, u.department_id, 
+                   u.staff_role, u.subjects_selected, u.subjects_locked, u.username,
+                   u.employee_id, d.name as department_name
+            FROM users u
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE u.id = ?
+        ''', (user_id,))
+        
+        user_data = cursor.fetchone()
+        conn.commit()
+        conn.close()
+        
+        if user_data:
+            user = {
+                'id': str(user_data[0]),
+                'name': user_data[1],
+                'email': user_data[2],
+                'role': user_data[3],
+                'department_id': str(user_data[4]) if user_data[4] else None,
+                'staff_role': user_data[5],
+                'subjects_selected': user_data[6].split(',') if user_data[6] else [],
+                'subjects_locked': bool(user_data[7]),
+                'username': user_data[8],
+                'employee_id': user_data[9],
+                'department_name': user_data[10]
+            }
+            
+            return jsonify({'success': True, 'data': user}), 200
+        
+        return jsonify({'error': 'Failed to retrieve updated user'}), 500
+        
+    except Exception as e:
+        logger.error(f"Update user error: {str(e)}")
+        return jsonify({'error': 'Failed to update user'}), 500
+
+# Department Management
+@app.route('/api/departments', methods=['GET'])
+@jwt_required()
+def get_departments():
+    try:
+        conn = sqlite3.connect('timetable_enhanced.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT id, name, code FROM departments ORDER BY name')
+        departments = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'data': [{
+                'id': str(dept[0]),
+                'name': dept[1],
+                'code': dept[2]
+            } for dept in departments]
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Get departments error: {str(e)}")
+        return jsonify({'error': 'Failed to fetch departments'}), 500
+
+@app.route('/api/departments', methods=['POST'])
+@jwt_required()
+def create_department():
+    try:
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
         
         # Verify main admin
         conn = sqlite3.connect('timetable_enhanced.db')
@@ -222,71 +313,27 @@ def register_user():
         if not user_role or user_role[0] != 'main_admin':
             return jsonify({'error': 'Access denied'}), 403
         
-        data = request.get_json()
-        required_fields = ['name', 'employee_id', 'department', 'programme', 'type', 'role', 'contact_number', 'email']
+        if not data.get('name') or not data.get('code'):
+            return jsonify({'error': 'Name and code are required'}), 400
         
-        for field in required_fields:
-            if not data.get(field):
-                return jsonify({'error': f'{field} is required'}), 400
-        
-        # Generate credentials
-        username, password = generate_credentials()
-        password_hash = generate_password_hash(password)
-        
-        # Get or create department
-        cursor.execute('SELECT id FROM departments WHERE name = ?', (data['department'],))
-        dept_result = cursor.fetchone()
-        
-        if not dept_result:
-            # Create department
-            dept_code = data['department'][:3].upper() + str(secrets.randbelow(1000)).zfill(3)
-            cursor.execute('INSERT INTO departments (name, code) VALUES (?, ?)', 
-                         (data['department'], dept_code))
-            department_id = cursor.lastrowid
-        else:
-            department_id = dept_result[0]
-        
-        # Create user
-        cursor.execute('''
-            INSERT INTO users (name, email, password_hash, username, employee_id, role, 
-                             department_id, programme, type, contact_number, staff_role)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            data['name'], data['email'], password_hash, username, data['employee_id'],
-            data['role'], department_id, data['programme'], data['type'], 
-            data['contact_number'], data.get('staff_role')
-        ))
-        
-        user_id = cursor.lastrowid
+        cursor.execute('INSERT INTO departments (name, code) VALUES (?, ?)', 
+                      (data['name'], data['code']))
+        dept_id = cursor.lastrowid
         conn.commit()
         conn.close()
         
-        # Return user data with credentials
-        user_data = {
-            'id': str(user_id),
-            'name': data['name'],
-            'email': data['email'],
-            'employee_id': data['employee_id'],
-            'role': data['role'],
-            'department_id': str(department_id),
-            'username': username,
-            'password': password,  # Only returned during registration
-            'department_name': data['department']
-        }
-        
-        logger.info(f"User {data['email']} registered successfully by admin {current_user_id}")
-        
         return jsonify({
             'success': True,
-            'data': user_data,
-            'message': f'User registered successfully. Username: {username}, Password: {password}'
+            'data': {
+                'id': str(dept_id),
+                'name': data['name'],
+                'code': data['code']
+            }
         }), 201
         
     except Exception as e:
-        logger.error(f"User registration error: {str(e)}")
-        return jsonify({'error': 'Registration failed'}), 500
-
-# ... keep existing code (other API routes would continue here)
+        logger.error(f"Create department error: {str(e)}")
+        return jsonify({'error': 'Failed to create department'}), 500
 
 if __name__ == '__main__':
     init_enhanced_db()
