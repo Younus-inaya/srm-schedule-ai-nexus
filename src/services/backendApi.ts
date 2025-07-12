@@ -9,41 +9,14 @@ export interface User {
   employee_id?: string;
   role: 'main_admin' | 'dept_admin' | 'staff';
   department_id?: string;
-  department?: string;
+  department_name?: string;
   programme?: string;
   type?: string;
   contact_number?: string;
   username?: string;
-}
-
-export interface Department {
-  id: string;
-  name: string;
-  code: string;
-  admin_id?: string;
-}
-
-export interface Subject {
-  id: string;
-  name: string;
-  code: string;
-  credits: number;
-  department_id: string;
-}
-
-export interface Classroom {
-  id: string;
-  name: string;
-  capacity: number;
-  department_id: string;
-}
-
-export interface Constraint {
-  id: string;
-  department_id: string;
-  constraint_type: string;
-  constraint_value: any;
-  created_by: string;
+  staff_role?: 'assistant_professor' | 'professor' | 'hod';
+  subjects_selected?: string[];
+  subjects_locked?: boolean;
 }
 
 export interface ApiResponse<T> {
@@ -81,25 +54,49 @@ class BackendApiService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: error instanceof Error ? error.message : 'Failed to parse response',
       };
+    }
+  }
+
+  // Test backend connection
+  async testConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Backend connection test failed:', error);
+      return false;
     }
   }
 
   // Authentication
   async login(credentials: { email: string; password: string }): Promise<ApiResponse<{ user: User; token: string }>> {
     try {
+      console.log('Attempting login with:', credentials.email);
+      
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
       });
       
-      return this.handleResponse<{ user: User; token: string }>(response);
+      const result = await this.handleResponse<{ user: User; token: string }>(response);
+      
+      if (result.success && result.data?.token) {
+        console.log('Login successful, storing token');
+        localStorage.setItem('auth_token', result.data.token);
+      }
+      
+      return result;
     } catch (error) {
+      console.error('Login network error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: 'Network error: Unable to connect to backend server. Please ensure it is running on localhost:5000',
       };
     }
   }
@@ -112,15 +109,21 @@ class BackendApiService {
       });
       
       const result = await this.handleResponse<any>(response);
+      
+      // Always clear token on logout, even if request fails
+      localStorage.removeItem('auth_token');
+      
       return {
         success: result.success,
         error: result.error,
         message: result.message,
       };
     } catch (error) {
+      // Clear token even on network error
+      localStorage.removeItem('auth_token');
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : 'Network error during logout',
       };
     }
   }
@@ -133,17 +136,28 @@ class BackendApiService {
       
       return this.handleResponse<{ user: User }>(response);
     } catch (error) {
+      console.error('Token verification error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: 'Unable to verify authentication token',
       };
     }
   }
 
   // User Management
-  async createUser(userData: Omit<User, 'id' | 'username'>): Promise<ApiResponse<{ user: User; credentials: { username: string; password: string } }>> {
+  async createUser(userData: {
+    name: string;
+    employee_id: string;
+    department: string;
+    programme: string;
+    type: string;
+    role: string;
+    contact_number: string;
+    email: string;
+    staff_role?: string;
+  }): Promise<ApiResponse<{ user: User; credentials: { username: string; password: string } }>> {
     try {
-      const response = await fetch(`${API_BASE_URL}/users`, {
+      const response = await fetch(`${API_BASE_URL}/admin/register-user`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify(userData),
@@ -158,40 +172,23 @@ class BackendApiService {
     }
   }
 
-  async getUsers(): Promise<ApiResponse<User[]>> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/users`, {
-        headers: this.getAuthHeaders(),
-      });
-      
-      return this.handleResponse<User[]>(response);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
-  async updateUser(userId: string, updates: Partial<User>): Promise<ApiResponse<User>> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
-        method: 'PUT',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify(updates),
-      });
-      
-      return this.handleResponse<User>(response);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
   // Department Management
-  async createDepartment(deptData: Omit<Department, 'id'>): Promise<ApiResponse<Department>> {
+  async getDepartments(): Promise<ApiResponse<{ id: string; name: string; code: string }[]>> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/departments`, {
+        headers: this.getAuthHeaders(),
+      });
+      
+      return this.handleResponse<{ id: string; name: string; code: string }[]>(response);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Network error',
+      };
+    }
+  }
+
+  async createDepartment(deptData: { name: string; code: string }): Promise<ApiResponse<{ id: string; name: string; code: string }>> {
     try {
       const response = await fetch(`${API_BASE_URL}/departments`, {
         method: 'POST',
@@ -199,204 +196,7 @@ class BackendApiService {
         body: JSON.stringify(deptData),
       });
       
-      return this.handleResponse<Department>(response);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
-  async getDepartments(): Promise<ApiResponse<Department[]>> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/departments`, {
-        headers: this.getAuthHeaders(),
-      });
-      
-      return this.handleResponse<Department[]>(response);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
-  // Subject Management
-  async createSubject(subjectData: Omit<Subject, 'id'>): Promise<ApiResponse<Subject>> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/subjects`, {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify(subjectData),
-      });
-      
-      return this.handleResponse<Subject>(response);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
-  async getSubjects(departmentId?: string): Promise<ApiResponse<Subject[]>> {
-    try {
-      const url = departmentId 
-        ? `${API_BASE_URL}/subjects?department_id=${departmentId}`
-        : `${API_BASE_URL}/subjects`;
-      
-      const response = await fetch(url, {
-        headers: this.getAuthHeaders(),
-      });
-      
-      return this.handleResponse<Subject[]>(response);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
-  // Classroom Management
-  async createClassroom(classroomData: Omit<Classroom, 'id'>): Promise<ApiResponse<Classroom>> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/classrooms`, {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify(classroomData),
-      });
-      
-      return this.handleResponse<Classroom>(response);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
-  async getClassrooms(departmentId?: string): Promise<ApiResponse<Classroom[]>> {
-    try {
-      const url = departmentId 
-        ? `${API_BASE_URL}/classrooms?department_id=${departmentId}`
-        : `${API_BASE_URL}/classrooms`;
-      
-      const response = await fetch(url, {
-        headers: this.getAuthHeaders(),
-      });
-      
-      return this.handleResponse<Classroom[]>(response);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
-  // Constraint Management
-  async createConstraint(constraintData: Omit<Constraint, 'id'>): Promise<ApiResponse<Constraint>> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/constraints`, {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify(constraintData),
-      });
-      
-      return this.handleResponse<Constraint>(response);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
-  async getConstraints(departmentId?: string): Promise<ApiResponse<Constraint[]>> {
-    try {
-      const url = departmentId 
-        ? `${API_BASE_URL}/constraints?department_id=${departmentId}`
-        : `${API_BASE_URL}/constraints`;
-      
-      const response = await fetch(url, {
-        headers: this.getAuthHeaders(),
-      });
-      
-      return this.handleResponse<Constraint[]>(response);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
-  // API Key Management
-  async updateApiKeys(keys: { groq_api_key?: string; google_api_key?: string }): Promise<ApiResponse<void>> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/settings/api-keys`, {
-        method: 'PUT',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify(keys),
-      });
-      
-      const result = await this.handleResponse<any>(response);
-      return {
-        success: result.success,
-        error: result.error,
-        message: result.message,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
-  async getApiKeys(): Promise<ApiResponse<{ groq_api_key?: string; google_api_key?: string }>> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/settings/api-keys`, {
-        headers: this.getAuthHeaders(),
-      });
-      
-      return this.handleResponse<{ groq_api_key?: string; google_api_key?: string }>(response);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
-  // Timetable Generation
-  async generateTimetable(departmentId: string, constraints?: any): Promise<ApiResponse<any>> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/timetable/generate`, {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify({ department_id: departmentId, constraints }),
-      });
-      
-      return this.handleResponse<any>(response);
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error',
-      };
-    }
-  }
-
-  async getTimetable(departmentId: string): Promise<ApiResponse<any>> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/timetable/${departmentId}`, {
-        headers: this.getAuthHeaders(),
-      });
-      
-      return this.handleResponse<any>(response);
+      return this.handleResponse<{ id: string; name: string; code: string }>(response);
     } catch (error) {
       return {
         success: false,

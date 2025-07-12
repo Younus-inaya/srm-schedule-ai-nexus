@@ -7,10 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Alert, AlertDescription } from '../components/ui/alert';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 
 const Login = () => {
-  const { isAuthenticated, user, login } = useAuth();
+  const { isAuthenticated, user, login, loading: authLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -30,15 +30,44 @@ const Login = () => {
     }
   }
 
+  // Show loading spinner while auth is initializing
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <span className="text-lg">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    const result = await login(email, password);
-    
-    if (!result.success) {
-      setError(result.error || 'Login failed');
+    if (!email || !password) {
+      setError('Please enter both email and password');
+      setLoading(false);
+      return;
+    }
+
+    if (!email.endsWith('@srmist.edu.in')) {
+      setError('Please use your @srmist.edu.in email address');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const result = await login(email, password);
+      
+      if (!result.success) {
+        setError(result.error || 'Login failed. Please check your credentials.');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('Unable to connect to server. Please ensure the backend is running on localhost:5000');
     }
     
     setLoading(false);
@@ -71,6 +100,7 @@ const Login = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
@@ -80,10 +110,11 @@ const Login = () => {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="Enter your email"
+                  placeholder="Enter your @srmist.edu.in email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  disabled={loading}
                 />
               </div>
               
@@ -96,6 +127,7 @@ const Login = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  disabled={loading}
                 />
               </div>
               
@@ -105,9 +137,19 @@ const Login = () => {
               </Button>
             </form>
             
-            <div className="mt-4 text-center text-sm">
-              <p className="text-gray-600">
-                Main Admin credentials: srmtt@srmist.edu.in / mcs2024
+            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+              <h4 className="font-semibold text-blue-900 mb-2">Test Credentials:</h4>
+              <div className="text-sm text-blue-800 space-y-1">
+                <p><strong>Main Admin:</strong></p>
+                <p>Email: srmtt@srmist.edu.in</p>
+                <p>Password: mcs2024</p>
+              </div>
+            </div>
+
+            <div className="mt-4 p-3 bg-yellow-50 rounded-lg">
+              <p className="text-sm text-yellow-800">
+                <AlertCircle className="inline h-4 w-4 mr-1" />
+                Make sure the Python backend is running on localhost:5000
               </p>
             </div>
           </CardContent>

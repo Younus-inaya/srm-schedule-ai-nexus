@@ -30,17 +30,14 @@ export const PythonAuthProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const token = localStorage.getItem('auth_token');
       if (token) {
         try {
-          // Validate token with backend
-          const response = await fetch('http://localhost:5000/api/auth/verify', {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
+          console.log('Verifying existing token...');
+          const response = await backendApi.verifyToken();
           
-          if (response.ok) {
-            const userData = await response.json();
-            setUser(userData.user);
+          if (response.success && response.data?.user) {
+            console.log('Token valid, user authenticated:', response.data.user.email);
+            setUser(response.data.user);
           } else {
+            console.log('Token invalid, removing...');
             localStorage.removeItem('auth_token');
           }
         } catch (error) {
@@ -58,19 +55,21 @@ export const PythonAuthProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     try {
       setLoading(true);
       
+      console.log('Attempting login for:', email);
       const response = await backendApi.login({ email, password });
       
       if (response.success && response.data) {
         const { user: userData, token } = response.data;
-        localStorage.setItem('auth_token', token);
+        console.log('Login successful:', userData.email, 'Role:', userData.role);
         setUser(userData);
         return { success: true };
       } else {
+        console.error('Login failed:', response.error);
         return { success: false, error: response.error || 'Login failed' };
       }
     } catch (error) {
       console.error('Login error:', error);
-      return { success: false, error: 'An unexpected error occurred' };
+      return { success: false, error: 'An unexpected error occurred during login' };
     } finally {
       setLoading(false);
     }
@@ -78,12 +77,13 @@ export const PythonAuthProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const logout = async () => {
     try {
+      console.log('Logging out...');
       await backendApi.logout();
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      localStorage.removeItem('auth_token');
       setUser(null);
+      console.log('User logged out');
     }
   };
 
