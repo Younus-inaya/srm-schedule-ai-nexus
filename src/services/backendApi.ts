@@ -1,4 +1,3 @@
-
 // Backend API service for SRM Timetable AI
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -164,6 +163,23 @@ class BackendApiService {
       });
       
       return this.handleResponse<{ user: User; credentials: { username: string; password: string } }>(response);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Network error',
+      };
+    }
+  }
+
+  async updateUser(userId: string, updates: Partial<User>): Promise<ApiResponse<User>> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+        method: 'PUT',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(updates),
+      });
+      
+      return this.handleResponse<User>(response);
     } catch (error) {
       return {
         success: false,
