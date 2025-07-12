@@ -42,8 +42,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isLoaded) {
         if (clerkUser) {
           try {
-            // Sync user profile with Supabase
-            const profile = await syncUserProfile(clerkUser);
+            // Create a compatible User object for syncUserProfile
+            const compatibleUser = {
+              id: clerkUser.id,
+              name: clerkUser.fullName || clerkUser.firstName || 'User',
+              email: clerkUser.primaryEmailAddress?.emailAddress || '',
+              role: (clerkUser.publicMetadata?.role as any) || 'staff',
+              department_id: clerkUser.publicMetadata?.department_id as string
+            };
+            
+            // Sync user profile with backend
+            const profile = await syncUserProfile(compatibleUser);
             
             if (profile) {
               setUser({
@@ -53,11 +62,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 role: profile.role,
                 department_id: profile.department_id,
                 staff_role: profile.staff_role,
-                subjects_selected: profile.subjects_selected,
+                subjects_selected: Array.isArray(profile.subjects_selected) 
+                  ? profile.subjects_selected.join(',') 
+                  : profile.subjects_selected || '',
                 subjects_locked: profile.subjects_locked
               });
             } else {
-              // Fallback to Clerk data if Supabase sync fails
+              // Fallback to Clerk data if backend sync fails
               setUser({
                 id: clerkUser.id,
                 email: clerkUser.primaryEmailAddress?.emailAddress || '',
@@ -65,7 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 role: (clerkUser.publicMetadata?.role as any) || 'staff',
                 department_id: clerkUser.publicMetadata?.department_id as string,
                 staff_role: clerkUser.publicMetadata?.staff_role as any,
-                subjects_selected: null,
+                subjects_selected: '',
                 subjects_locked: false
               });
             }
@@ -79,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               role: (clerkUser.publicMetadata?.role as any) || 'staff',
               department_id: clerkUser.publicMetadata?.department_id as string,
               staff_role: clerkUser.publicMetadata?.staff_role as any,
-              subjects_selected: null,
+              subjects_selected: '',
               subjects_locked: false
             });
           }

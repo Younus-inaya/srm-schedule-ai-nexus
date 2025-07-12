@@ -4,7 +4,6 @@ import { Navigate, Link } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { GraduationCap, Users, Calendar, Zap, Shield, Database } from 'lucide-react';
-import DemoSetup from '../components/DemoSetup';
 
 const Index = () => {
   const { isAuthenticated, user } = useAuth();
@@ -79,13 +78,6 @@ const Index = () => {
               Learn More
             </Button>
           </div>
-
-          {/* Demo Setup Section - Only show for authenticated users */}
-          {isAuthenticated && (
-            <div className="mb-12">
-              <DemoSetup />
-            </div>
-          )}
         </div>
       </section>
 
